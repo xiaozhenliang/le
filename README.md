@@ -55,6 +55,8 @@ renew:
   Renew a cert.
 renewAll:
   Renew all the certs.
+revoke:
+  Revoke a cert.
 uninstall:
   Uninstall le.sh, and uninstall the cron job.
 version:

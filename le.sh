@@ -1,5 +1,5 @@
 #!/bin/bash
-VER=1.1.3
+VER=1.1.4
 PROJECT="https://github.com/Neilpang/le"
 
 DEFAULT_CA="https://acme-v01.api.letsencrypt.org"
@@ -159,6 +159,10 @@ _send_signed_request() {
   url=$1
   payload=$2
   needbase64=$3
+  prvkey="$4"
+  if [ -z "$prvkey" ] ; then
+    prvkey="$ACCOUNT_KEY_PATH"
+  fi
   
   _debug url $url
   _debug payload "$payload"
@@ -183,13 +187,13 @@ _send_signed_request() {
   protected64=$( echo -n $protected | _base64 | _b64)
   _debug protected64 "$protected64"
   
-  sig=$(echo -n "$protected64.$payload64" |  openssl   dgst   -sha256  -sign  $ACCOUNT_KEY_PATH | _base64 | _b64)
+  sig=$(echo -n "$protected64.$payload64" |  openssl   dgst   -sha256  -sign  $prvkey | _base64 | _b64)
   _debug sig "$sig"
   
   body="{\"header\": $HEADER, \"protected\": \"$protected64\", \"payload\": \"$payload64\", \"signature\": \"$sig\"}"
   _debug body "$body"
   
-  if [ "$needbase64" ] ; then
+  if [ "$needbase64" ] && [ "$needbase64" != "no" ] ; then
     response="$($CURL -X POST --data "$body" $url | _base64)"
   else
     response="$($CURL -X POST --data "$body" $url)"
@@ -868,6 +872,59 @@ issue() {
 
 }
 
+revoke() {
+  Le_Domain="$1"
+  if [ -z "$Le_Domain" ] ; then
+    _err "Usage: $0  domain.com"
+    return 1
+  fi
+  
+  _initpath $Le_Domain
+  if [ ! -f "$DOMAIN_CONF" ] ; then
+    _err "$Le_Domain is not a issued domain, skip."
+    return 1;
+  fi
+  
+  if [ ! -f "$CERT_PATH" ] ; then
+    _err "Cert for $Le_Domain $CERT_PATH is not found, skip."
+    return 1
+  fi
+  
+  cert="$(cat $CERT_PATH | head  --lines -1 | tail  -n +2 | tr "\r\n" -d)"
+  
+  if [ -z "$cert" ] ; then
+    _err "Cert for $Le_Domain is empty found, skip."
+    return 1
+  fi
+  
+  _debug "Try domain key first."
+  if _send_signed_request $uri "{\"resource\": \"revoke-cert\", \"certificate\": \"$cert\"}"  "no" "$CERT_KEY_PATH"; then
+    if [ -z "$response" ] ; then
+      _info "Revoke success."
+      rm -f $CERT_PATH
+      return 0
+    else 
+      _err "Revoke error by domain key."
+      _debug "$resource"
+    fi
+  fi
+  
+  _debug "Then try account key."
+  if _send_signed_request $uri "{\"resource\": \"revoke-cert\", \"certificate\": \"$cert\"}"; then
+    if [ -z "$response" ] ; then
+      _info "Revoke success."
+      rm -f $CERT_PATH
+      return 0
+    else 
+      _err "Revoke error."
+      _debug "$resource"
+    fi
+  fi
+  
+  return 1
+  
+}
+
 renew() {
   Le_Domain="$1"
   if [ -z "$Le_Domain" ] ; then
@@ -1159,6 +1216,8 @@ renew:
   Renew a cert.
 renewAll:
   Renew all the certs.
+revoke:
+  Revoke a cert.
 uninstall:
   Uninstall le.sh, and uninstall the cron job.
 version:
