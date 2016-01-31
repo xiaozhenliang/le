@@ -908,7 +908,7 @@ revoke() {
     return 1
   fi
   
-  data="{\"resource\":\"revoke-cert\",\"certificate\":\"$cert\"}"
+  data="{\"resource\": \"revoke-cert\", \"certificate\": \"$cert\"}"
   uri="$API/acme/revoke-cert"
   
   _debug "Try domain key first."
