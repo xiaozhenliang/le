@@ -472,7 +472,7 @@ _initjwk() {
     prvkey="$ACCOUNT_KEY_PATH"
   fi
 
-  pub_exp=$(openssl rsa -in $ACCOUNT_KEY_PATH  -noout -text | grep "^publicExponent:"| cut -d '(' -f 2 | cut -d 'x' -f 2 | cut -d ')' -f 1)
+  pub_exp=$(openssl rsa -in $prvkey  -noout -text | grep "^publicExponent:"| cut -d '(' -f 2 | cut -d 'x' -f 2 | cut -d ')' -f 1)
   if [ "${#pub_exp}" == "5" ] ; then
     pub_exp=0$pub_exp
   fi
@@ -481,10 +481,11 @@ _initjwk() {
   e=$(echo $pub_exp | _h2b | _base64)
   _debug e "$e"
   
-  modulus=$(openssl rsa -in $ACCOUNT_KEY_PATH -modulus -noout | cut -d '=' -f 2 )
+  modulus=$(openssl rsa -in $prvkey -modulus -noout | cut -d '=' -f 2 )
   n=$(echo $modulus| _h2b | _base64 | _b64 )
 
   jwk='{"e": "'$e'", "kty": "RSA", "n": "'$n'"}'
+  _debug jwk "$jwk"
   
   HEADER='{"alg": "RS256", "jwk": '$jwk'}'
   HEADERPLACE='{"nonce": "NONCE", "alg": "RS256", "jwk": '$jwk'}'
@@ -907,10 +908,12 @@ revoke() {
     return 1
   fi
   
+  data="{\"resource\":\"revoke-cert\",\"certificate\":\"$cert\"}"
+  uri="$API/acme/revoke-cert"
+  
   _debug "Try domain key first."
   _initjwk "$CERT_KEY_PATH"
-  uri="$API/acme/revoke-cert"
-  if _send_signed_request $uri "{\"resource\": \"revoke-cert\", \"certificate\": \"$cert\"}"  "no" "$CERT_KEY_PATH"; then
+  if _send_signed_request $uri "$data" "no" "$CERT_KEY_PATH"; then
     if [ -z "$response" ] ; then
       _info "Revoke success."
       rm -f $CERT_PATH
@@ -923,7 +926,7 @@ revoke() {
   
   _debug "Then try account key."
   _initjwk "$ACCOUNT_KEY_PATH"
-  if _send_signed_request $uri "{\"resource\": \"revoke-cert\", \"certificate\": \"$cert\"}"; then
+  if _send_signed_request $uri "$data" ; then
     if [ -z "$response" ] ; then
       _info "Revoke success."
       rm -f $CERT_PATH
